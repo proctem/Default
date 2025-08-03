@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from typing import Optional, List
 import uvicorn
-from originalmodel import  Analytics_Model2
+from originalmodela import  Analytics_Model2
 
 app = FastAPI(
     title="Integrated Project Economics Model API",
