@@ -3,9 +3,13 @@ from pydantic import BaseModel
 from typing import Optional
 import originalmodela as model
 import pandas as pd
+import numpy as np
 import logging
+from copy import deepcopy
 from pathlib import Path
+import json
 import traceback
+from contextlib import contextmanager
 
 # Configure logging
 logging.basicConfig(
@@ -20,15 +24,20 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Data storage
+# Store pristine defaults at startup
+DEFAULT_PARAMS = None
 MULTIPLIER_DATA = None
 PROJECT_DATA = None
 
 def load_data_files():
     """Load all required data files at startup"""
-    global MULTIPLIER_DATA, PROJECT_DATA
+    global DEFAULT_PARAMS, MULTIPLIER_DATA, PROJECT_DATA
     
     try:
+        # Load default parameters
+        DEFAULT_PARAMS = deepcopy(model.PARAMS)
+        logger.info("Loaded default parameters")
+        
         # Load multiplier data
         multiplier_path = Path("sectorwise_multipliers.csv")
         if multiplier_path.exists():
@@ -73,6 +82,11 @@ class AnalysisRequest(BaseModel):
     plant_effy: Optional[str] = "High"
     carbon_value: Optional[str] = "No"
 
+@app.on_event("startup")
+async def startup_event():
+    """Load data files when starting the application"""
+    load_data_files()
+
 @app.post("/run_analysis")
 async def run_analysis(request: AnalysisRequest):
     try:
@@ -92,7 +106,7 @@ async def run_analysis(request: AnalysisRequest):
                 detail=f"No project data found for location '{request.location}' and product '{request.product}'"
             )
 
-        # Run the analysis with only the required parameters
+        # Run the analysis
         results = model.Analytics_Model2(
             multiplier=MULTIPLIER_DATA,
             project_data=project_data,
