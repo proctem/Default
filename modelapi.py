@@ -5,7 +5,7 @@ from typing import Literal
 import pandas as pd
 import numpy as np
 import logging
-from originalmodel import Analytics_Model  # Make sure this import is correct
+from originalmodela import Analytics_Model  # Make sure this import is correct
 
 # ---------------------------------------
 # Set up error logging to error.log file
