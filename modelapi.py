@@ -186,26 +186,38 @@ async def run_analysis(request: AnalysisRequest):
         if hasattr(results, 'columns'):
             logger.info(f"Raw results columns: {results.columns.tolist()}")
         
-        # Check for NaN values in the results
+        # Check for NaN values in the results - FIXED VERSION
         if hasattr(results, 'isna'):
             nan_count = results.isna().sum().sum()
-            inf_count = np.isinf(results.select_dtypes(include=[np.number])).sum().sum()
             logger.info(f"NaN values in results: {nan_count}")
+            
+            # Get numeric columns only for Inf check
+            numeric_results = results.select_dtypes(include=[np.number])
+            inf_count = np.isinf(numeric_results).sum().sum()
             logger.info(f"Inf values in results: {inf_count}")
             
             if nan_count > 0 or inf_count > 0:
-                # Log which columns have NaN/Inf values
+                # Log which columns have NaN values
                 nan_columns = results.columns[results.isna().any()].tolist()
-                inf_columns = results.columns[np.isinf(results.select_dtypes(include=[np.number])).any()].tolist()
                 logger.warning(f"Columns with NaN values: {nan_columns}")
+                
+                # Log which numeric columns have Inf values
+                inf_columns = numeric_results.columns[np.isinf(numeric_results).any()].tolist()
                 logger.warning(f"Columns with Inf values: {inf_columns}")
                 
-                # Log sample of problematic data
+                # Log sample of problematic data for NaN
                 for col in nan_columns:
                     nan_indices = results[col].isna()
                     if nan_indices.any():
                         sample_nan = results[col][nan_indices].head(3)
-                        logger.warning(f"Sample NaN values in {col}: {sample_nan.tolist()}")
+                        logger.warning(f"Sample NaN values in {col}: indices {nan_indices[nan_indices].index.tolist()[:3]}")
+                        
+                # Log sample of problematic data for Inf
+                for col in inf_columns:
+                    inf_indices = np.isinf(results[col])
+                    if inf_indices.any():
+                        sample_inf = results[col][inf_indices].head(3)
+                        logger.warning(f"Sample Inf values in {col}: {sample_inf.tolist()}")
         
         # Clean the dataframe for JSON serialization
         results_clean = clean_dataframe_for_json(results)
@@ -231,7 +243,6 @@ async def run_analysis(request: AnalysisRequest):
                     json.dumps(record)
                 except Exception as record_error:
                     logger.error(f"Problematic record {i}: {record_error}")
-                    logger.error(f"Problematic record data: {record}")
                     # Log which key-value pair is problematic
                     for key, value in record.items():
                         try:
