@@ -44,15 +44,38 @@ def load_data_files():
             MULTIPLIER_DATA = pd.read_csv(multiplier_path)
             logger.info("Loaded multiplier data")
         else:
-            raise FileNotFoundError("multiplier_data.csv not found")
+            raise FileNotFoundError("sectorwise_multipliers.csv not found")
         
-        # Load project data
-        project_path = Path("project_data.csv")
-        if project_path.exists():
-            PROJECT_DATA = pd.read_csv(project_path)
-            logger.info("Loaded project data")
+        # Load project data from both CSV files
+        project_path1 = Path("project_data.csv")
+        project_path2 = Path("project_data1.csv")
+        
+        project_data_parts = []
+        
+        if project_path1.exists():
+            df1 = pd.read_csv(project_path1)
+            project_data_parts.append(df1)
+            logger.info(f"Loaded project_data.csv with {len(df1)} rows")
         else:
             raise FileNotFoundError("project_data.csv not found")
+            
+        if project_path2.exists():
+            df2 = pd.read_csv(project_path2)
+            project_data_parts.append(df2)
+            logger.info(f"Loaded project_data1.csv with {len(df2)} rows")
+        else:
+            logger.warning("project_data1.csv not found, using only project_data.csv")
+        
+        # Combine all project data parts
+        if project_data_parts:
+            PROJECT_DATA = pd.concat(project_data_parts, ignore_index=True)
+            logger.info(f"Combined project data with {len(PROJECT_DATA)} total rows")
+            
+            # Log unique values for debugging
+            logger.info(f"Available locations: {PROJECT_DATA['Country'].unique().tolist()}")
+            logger.info(f"Available products: {PROJECT_DATA['Main_Prod'].unique().tolist()}")
+        else:
+            raise FileNotFoundError("No project data files found")
             
     except Exception as e:
         logger.critical(f"Failed to load data files: {str(e)}")
@@ -82,11 +105,6 @@ class AnalysisRequest(BaseModel):
     plant_effy: Optional[str] = "High"
     carbon_value: Optional[str] = "No"
 
-@app.on_event("startup")
-async def startup_event():
-    """Load data files when starting the application"""
-    load_data_files()
-
 @app.post("/run_analysis")
 async def run_analysis(request: AnalysisRequest):
     try:
@@ -101,9 +119,17 @@ async def run_analysis(request: AnalysisRequest):
         ]
         
         if len(project_data) == 0:
+            # Provide more helpful error message with available options
+            available_locations = PROJECT_DATA['Country'].unique().tolist()
+            available_products = PROJECT_DATA['Main_Prod'].unique().tolist()
+            
             raise HTTPException(
                 status_code=404,
-                detail=f"No project data found for location '{request.location}' and product '{request.product}'"
+                detail={
+                    "message": f"No project data found for location '{request.location}' and product '{request.product}'",
+                    "available_locations": available_locations,
+                    "available_products": available_products
+                }
             )
 
         # Run the analysis
@@ -126,7 +152,20 @@ async def run_analysis(request: AnalysisRequest):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Analysis failed: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@app.get("/available_options")
+async def get_available_options():
+    """Endpoint to get available locations and products"""
+    if PROJECT_DATA is None:
+        raise HTTPException(status_code=500, detail="Project data not loaded")
+    
+    return {
+        "locations": PROJECT_DATA['Country'].unique().tolist(),
+        "products": PROJECT_DATA['Main_Prod'].unique().tolist()
+    }
 
 if __name__ == "__main__":
     import uvicorn
