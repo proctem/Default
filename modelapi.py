@@ -105,6 +105,37 @@ class AnalysisRequest(BaseModel):
     plant_effy: Optional[str] = "High"
     carbon_value: Optional[str] = "No"
 
+def clean_dataframe_for_json(df):
+    """Clean DataFrame to remove NaN, Inf, and other non-JSON-serializable values"""
+    try:
+        # Create a copy to avoid modifying original
+        df_clean = df.copy()
+        
+        # Replace NaN and Inf with None (which becomes null in JSON)
+        df_clean = df_clean.replace([np.nan, np.inf, -np.inf], None)
+        
+        # Check for any remaining problematic values
+        problematic_columns = []
+        for col in df_clean.columns:
+            # Check for any remaining non-serializable values
+            for idx, value in enumerate(df_clean[col]):
+                try:
+                    json.dumps(value)
+                except (TypeError, ValueError):
+                    problematic_columns.append((col, idx, value))
+                    # Replace problematic value with None
+                    df_clean.at[idx, col] = None
+        
+        if problematic_columns:
+            logger.warning(f"Found problematic values in columns: {problematic_columns}")
+            
+        return df_clean
+        
+    except Exception as e:
+        logger.error(f"Error cleaning dataframe: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
+
 @app.post("/run_analysis")
 async def run_analysis(request: AnalysisRequest):
     try:
@@ -132,6 +163,8 @@ async def run_analysis(request: AnalysisRequest):
                 }
             )
 
+        logger.info(f"Running analysis for: {request.location}, {request.product}, {request.plant_mode}, {request.fund_mode}")
+        
         # Run the analysis
         results = model.Analytics_Model2(
             multiplier=MULTIPLIER_DATA,
@@ -146,8 +179,69 @@ async def run_analysis(request: AnalysisRequest):
             plant_effy=request.plant_effy
         )
         
-        # Convert results to list of dicts for JSON response
-        return results.to_dict(orient='records')
+        # Log the raw results for debugging
+        logger.info(f"Raw results type: {type(results)}")
+        if hasattr(results, 'shape'):
+            logger.info(f"Raw results shape: {results.shape}")
+        if hasattr(results, 'columns'):
+            logger.info(f"Raw results columns: {results.columns.tolist()}")
+        
+        # Check for NaN values in the results
+        if hasattr(results, 'isna'):
+            nan_count = results.isna().sum().sum()
+            inf_count = np.isinf(results.select_dtypes(include=[np.number])).sum().sum()
+            logger.info(f"NaN values in results: {nan_count}")
+            logger.info(f"Inf values in results: {inf_count}")
+            
+            if nan_count > 0 or inf_count > 0:
+                # Log which columns have NaN/Inf values
+                nan_columns = results.columns[results.isna().any()].tolist()
+                inf_columns = results.columns[np.isinf(results.select_dtypes(include=[np.number])).any()].tolist()
+                logger.warning(f"Columns with NaN values: {nan_columns}")
+                logger.warning(f"Columns with Inf values: {inf_columns}")
+                
+                # Log sample of problematic data
+                for col in nan_columns:
+                    nan_indices = results[col].isna()
+                    if nan_indices.any():
+                        sample_nan = results[col][nan_indices].head(3)
+                        logger.warning(f"Sample NaN values in {col}: {sample_nan.tolist()}")
+        
+        # Clean the dataframe for JSON serialization
+        results_clean = clean_dataframe_for_json(results)
+        
+        # Try to convert to dict and catch any serialization errors
+        try:
+            results_dict = results_clean.to_dict(orient='records')
+            logger.info(f"Successfully converted results to dict with {len(results_dict)} records")
+        except Exception as e:
+            logger.error(f"Error converting results to dict: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"Error processing results: {str(e)}")
+        
+        # Test JSON serialization
+        try:
+            test_json = json.dumps(results_dict)
+            logger.info("Results successfully serialized to JSON")
+        except Exception as e:
+            logger.error(f"JSON serialization error: {str(e)}")
+            # Try to identify the problematic value
+            for i, record in enumerate(results_dict):
+                try:
+                    json.dumps(record)
+                except Exception as record_error:
+                    logger.error(f"Problematic record {i}: {record_error}")
+                    logger.error(f"Problematic record data: {record}")
+                    # Log which key-value pair is problematic
+                    for key, value in record.items():
+                        try:
+                            json.dumps(value)
+                        except Exception as value_error:
+                            logger.error(f"Problematic key-value pair: {key} = {value} (error: {value_error})")
+                    break
+            raise HTTPException(status_code=500, detail=f"JSON serialization failed: {str(e)}")
+        
+        return results_dict
 
     except HTTPException:
         raise
@@ -165,6 +259,16 @@ async def get_available_options():
     return {
         "locations": PROJECT_DATA['Country'].unique().tolist(),
         "products": PROJECT_DATA['Main_Prod'].unique().tolist()
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "data_loaded": PROJECT_DATA is not None and MULTIPLIER_DATA is not None,
+        "project_data_rows": len(PROJECT_DATA) if PROJECT_DATA is not None else 0,
+        "multiplier_data_rows": len(MULTIPLIER_DATA) if MULTIPLIER_DATA is not None else 0
     }
 
 if __name__ == "__main__":
