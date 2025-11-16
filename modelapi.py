@@ -46,36 +46,18 @@ def load_data_files():
         else:
             raise FileNotFoundError("sectorwise_multipliers.csv not found")
         
-        # Load project data from both CSV files
-        project_path1 = Path("project_data.csv")
-        project_path2 = Path("project_data1.csv")
+        # Load project data from project_data.csv only
+        project_path = Path("project_data.csv")
         
-        project_data_parts = []
-        
-        if project_path1.exists():
-            df1 = pd.read_csv(project_path1)
-            project_data_parts.append(df1)
-            logger.info(f"Loaded project_data.csv with {len(df1)} rows")
-        else:
-            raise FileNotFoundError("project_data.csv not found")
-            
-        if project_path2.exists():
-            df2 = pd.read_csv(project_path2)
-            project_data_parts.append(df2)
-            logger.info(f"Loaded project_data1.csv with {len(df2)} rows")
-        else:
-            logger.warning("project_data1.csv not found, using only project_data.csv")
-        
-        # Combine all project data parts
-        if project_data_parts:
-            PROJECT_DATA = pd.concat(project_data_parts, ignore_index=True)
-            logger.info(f"Combined project data with {len(PROJECT_DATA)} total rows")
+        if project_path.exists():
+            PROJECT_DATA = pd.read_csv(project_path)
+            logger.info(f"Loaded project_data.csv with {len(PROJECT_DATA)} rows")
             
             # Log unique values for debugging
             logger.info(f"Available locations: {PROJECT_DATA['Country'].unique().tolist()}")
             logger.info(f"Available products: {PROJECT_DATA['Main_Prod'].unique().tolist()}")
         else:
-            raise FileNotFoundError("No project data files found")
+            raise FileNotFoundError("project_data.csv not found")
             
     except Exception as e:
         logger.critical(f"Failed to load data files: {str(e)}")
@@ -186,7 +168,7 @@ async def run_analysis(request: AnalysisRequest):
         if hasattr(results, 'columns'):
             logger.info(f"Raw results columns: {results.columns.tolist()}")
         
-        # Check for NaN values in the results - FIXED VERSION
+        # Check for NaN values in the results
         if hasattr(results, 'isna'):
             nan_count = results.isna().sum().sum()
             logger.info(f"NaN values in results: {nan_count}")
