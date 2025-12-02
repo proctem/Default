@@ -137,9 +137,10 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
   feedcst = feedQ * feedprice
   fuelcst = netHeat * fuelprice
   eleccst = PARAMS['elEFF'] * Relec * elecprice
-
-
+    
+  CarbonTAX = [0] * project_life
   CarbonTAX[:] = [data["CO2price"][0]] * project_life
+    
 
 
 
