@@ -140,7 +140,7 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
 
 
   CarbonTAX = [0] * project_life
-  CarbonTAX[:] = CO2price
+  CarbonTAX[:] = data["CO2price"]
 
 
 
