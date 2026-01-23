@@ -155,6 +155,9 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
   
   ######UPDATED: Using second version's OPEX approach####################
   capex[:len(PARAMS['capex_spread'])] = np.array(PARAMS['capex_spread']) * data["CAPEX"]
+      # After line 165, add:
+  if plant_mode == "Brown":
+    capex = [0] * project_life  # Zero out capex distribution for brownfield
 
   # FIXED: Create an array of the same length for OPEX assignment
   opex[PARAMS['construction_prd']:] = [data["OPEX"]] * len(opex[PARAMS['construction_prd']:])
